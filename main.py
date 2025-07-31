@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 import socket
+import base64
 from logging.handlers import RotatingFileHandler, SysLogHandler
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -101,8 +102,18 @@ class LoRaGatewayLogger:
             payload_summary = self._extract_payload_summary(payload)
             self.logger.info(f"LoRa 업링크 데이터 수신 - App: {application_id}, Device: {device_id}")
             self.logger.info(f"  📡 RSSI: {payload_summary.get('rssi', 'N/A')} dBm, SNR: {payload_summary.get('snr', 'N/A')} dB")
-            self.logger.info(f"  📊 Data: {payload_summary.get('data', 'N/A')} (크기: {payload_summary.get('data_size', 0)} bytes)")
+            
+            # 디코딩된 데이터 표시
+            decoded_data = payload_summary.get('decoded_data', {})
+            if 'text' in decoded_data:
+                self.logger.info(f"  📝 텍스트: '{decoded_data['text']}'")
+            if 'hex' in decoded_data:
+                self.logger.info(f"  📊 HEX: {decoded_data['hex']} (크기: {payload_summary.get('data_size', 0)} bytes)")
+            
             self.logger.info(f"  🔢 Frame Count: {payload_summary.get('fCnt', 'N/A')}, Port: {payload_summary.get('fPort', 'N/A')}")
+            
+            # 원본 Base64 데이터는 debug 레벨로
+            self.logger.debug(f"  📦 Base64: {payload_summary.get('data', 'N/A')}")
             
             self.log_uplink_data(log_data)
             self.stats['messages_processed'] += 1
@@ -130,10 +141,16 @@ class LoRaGatewayLogger:
                     summary['latitude'] = rx_info['location'].get('latitude')
                     summary['longitude'] = rx_info['location'].get('longitude')
             
-            # 데이터 페이로드 추출
+            # 데이터 페이로드 추출 및 디코딩
             if 'data' in payload:
                 summary['data'] = payload['data']
-                summary['data_size'] = len(payload['data']) // 2  # hex string의 실제 바이트 크기
+                summary['decoded_data'] = self._decode_payload_data(payload['data'])
+                # Base64 디코딩된 데이터의 실제 바이트 크기
+                try:
+                    decoded_bytes = base64.b64decode(payload['data'])
+                    summary['data_size'] = len(decoded_bytes)
+                except:
+                    summary['data_size'] = len(payload['data']) // 2  # fallback to hex calculation
             
             # 프레임 정보 추출
             summary['fCnt'] = payload.get('fCnt')
@@ -150,6 +167,39 @@ class LoRaGatewayLogger:
             self.logger.debug(f"페이로드 정보 추출 오류: {e}")
             
         return summary
+    
+    def _decode_payload_data(self, data):
+        """Base64 인코딩된 LoRa 페이로드 데이터 디코딩"""
+        decoded_info = {}
+        
+        try:
+            # Base64 디코딩
+            decoded_bytes = base64.b64decode(data)
+            
+            # HEX 표현
+            decoded_info['hex'] = decoded_bytes.hex().upper()
+            
+            # ASCII 텍스트로 변환 시도
+            try:
+                decoded_text = decoded_bytes.decode('utf-8')
+                # 출력 가능한 문자인지 확인
+                if decoded_text.isprintable():
+                    decoded_info['text'] = decoded_text
+                else:
+                    decoded_info['text'] = f"[비출력문자포함: {repr(decoded_text)}]"
+            except UnicodeDecodeError:
+                decoded_info['text'] = "[텍스트 디코딩 불가]"
+            
+            # 바이트 배열도 표시 (디버깅용)
+            decoded_info['bytes'] = list(decoded_bytes)
+            
+        except Exception as e:
+            decoded_info = {
+                'error': f"디코딩 오류: {e}",
+                'raw': data
+            }
+            
+        return decoded_info
     
     def log_uplink_data(self, data):
         log_filename = f"uplink_data_{datetime.now().strftime('%Y%m%d')}.json"
