@@ -9,6 +9,15 @@ import socket
 import base64
 from logging.handlers import RotatingFileHandler, SysLogHandler
 
+# SQLite 연동 모듈
+try:
+    from database import LoRaDatabase
+    from models import UplinkMessage
+    SQLITE_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"SQLite 모듈을 로드할 수 없습니다: {e}. JSON 로깅만 사용합니다.")
+    SQLITE_AVAILABLE = False
+
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
@@ -49,7 +58,8 @@ logging.basicConfig(
 )
 
 class LoRaGatewayLogger:
-    def __init__(self, broker_host="localhost", broker_port=1883, username=None, password=None):
+    def __init__(self, broker_host="localhost", broker_port=1883, username=None, password=None, 
+                 enable_sqlite=True, db_path="lora_gateway.db"):
         self.broker_host = broker_host
         self.broker_port = broker_port
         self.username = username
@@ -58,10 +68,22 @@ class LoRaGatewayLogger:
         self.topic_pattern = "application/+/device/+/event/up"
         self.logger = logging.getLogger(__name__)
         
+        # SQLite 데이터베이스 초기화
+        self.db = None
+        if enable_sqlite and SQLITE_AVAILABLE:
+            try:
+                self.db = LoRaDatabase(db_path)
+                self.logger.info("SQLite 데이터베이스 연동 활성화")
+            except Exception as e:
+                self.logger.error(f"SQLite 데이터베이스 초기화 실패: {e}")
+                self.db = None
+        
         # 디버깅을 위한 상태 정보
         self.stats = {
             'messages_received': 0,
             'messages_processed': 0,
+            'sqlite_saves': 0,
+            'json_saves': 0,
             'errors': 0,
             'start_time': None,
             'last_message_time': None
@@ -115,7 +137,8 @@ class LoRaGatewayLogger:
             # 원본 Base64 데이터는 debug 레벨로
             self.logger.debug(f"  📦 Base64: {payload_summary.get('data', 'N/A')}")
             
-            self.log_uplink_data(log_data)
+            # 데이터 저장 (SQLite + JSON 병행)
+            self.save_uplink_data(payload_summary, application_id, device_id, msg.topic, log_data)
             self.stats['messages_processed'] += 1
             
         except json.JSONDecodeError as e:
@@ -201,6 +224,28 @@ class LoRaGatewayLogger:
             
         return decoded_info
     
+    def save_uplink_data(self, payload_summary: dict, application_id: str, 
+                        device_id: str, topic: str, legacy_log_data: dict):
+        """업링크 데이터를 SQLite와 JSON 파일에 저장"""
+        
+        # 1. SQLite에 저장
+        if self.db:
+            try:
+                uplink_message = UplinkMessage.from_payload_summary(
+                    payload_summary, application_id, device_id, 
+                    topic, socket.gethostname()
+                )
+                message_id = self.db.insert_uplink_message(uplink_message)
+                if message_id:
+                    self.stats['sqlite_saves'] += 1
+                    self.logger.debug(f"SQLite 저장 완료 - ID: {message_id}")
+                    
+            except Exception as e:
+                self.logger.error(f"SQLite 저장 오류: {e}")
+        
+        # 2. JSON 파일에 저장 (기존 방식 유지)
+        self.log_uplink_data(legacy_log_data)
+    
     def log_uplink_data(self, data):
         log_filename = f"uplink_data_{datetime.now().strftime('%Y%m%d')}.json"
         
@@ -208,8 +253,9 @@ class LoRaGatewayLogger:
             with open(log_filename, 'a', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
                 f.write('\n')
+                self.stats['json_saves'] += 1
         except Exception as e:
-            logging.error(f"데이터 저장 오류: {e}")
+            logging.error(f"JSON 데이터 저장 오류: {e}")
     
     def on_disconnect(self, client, userdata, rc):
         logging.info("MQTT 브로커 연결 해제")
@@ -218,8 +264,11 @@ class LoRaGatewayLogger:
         """디버깅을 위한 통계 정보 출력"""
         if self.stats['start_time']:
             uptime = datetime.now() - self.stats['start_time']
+            sqlite_info = f"SQLite: {self.stats['sqlite_saves']}, " if self.db else ""
             self.logger.info(f"통계 - 가동시간: {uptime}, 수신: {self.stats['messages_received']}, "
-                           f"처리: {self.stats['messages_processed']}, 오류: {self.stats['errors']}")
+                           f"처리: {self.stats['messages_processed']}, "
+                           f"{sqlite_info}JSON: {self.stats['json_saves']}, "
+                           f"오류: {self.stats['errors']}")
     
     def start(self):
         try:
