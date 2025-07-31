@@ -12,7 +12,7 @@ from logging.handlers import RotatingFileHandler, SysLogHandler
 # SQLite 연동 모듈
 try:
     from database import LoRaDatabase
-    from models import UplinkMessage
+    from models import UplinkMessage, JoinEvent
     SQLITE_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"SQLite 모듈을 로드할 수 없습니다: {e}. JSON 로깅만 사용합니다.")
@@ -65,7 +65,8 @@ class LoRaGatewayLogger:
         self.username = username
         self.password = password
         self.client = None
-        self.topic_pattern = "application/+/device/+/event/up"
+        self.uplink_topic_pattern = "application/+/device/+/event/up"
+        self.join_topic_pattern = "application/+/device/+/event/join"
         self.logger = logging.getLogger(__name__)
         
         # SQLite 데이터베이스 초기화
@@ -82,6 +83,8 @@ class LoRaGatewayLogger:
         self.stats = {
             'messages_received': 0,
             'messages_processed': 0,
+            'joins_received': 0,
+            'joins_processed': 0,
             'sqlite_saves': 0,
             'json_saves': 0,
             'errors': 0,
@@ -92,54 +95,37 @@ class LoRaGatewayLogger:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             logging.info(f"MQTT 브로커 연결 성공: {self.broker_host}:{self.broker_port}")
-            client.subscribe(self.topic_pattern)
-            logging.info(f"토픽 구독: {self.topic_pattern}")
+            # 업링크 메시지 구독
+            client.subscribe(self.uplink_topic_pattern)
+            logging.info(f"업링크 토픽 구독: {self.uplink_topic_pattern}")
+            # JOIN 이벤트 구독
+            client.subscribe(self.join_topic_pattern)
+            logging.info(f"JOIN 토픽 구독: {self.join_topic_pattern}")
         else:
             logging.error(f"MQTT 브로커 연결 실패, 오류 코드: {rc}")
     
     def on_message(self, client, userdata, msg):
         try:
-            self.stats['messages_received'] += 1
-            self.stats['last_message_time'] = datetime.now()
+            # 토픽 분석으로 이벤트 유형 판단
+            topic_parts = msg.topic.split('/')
+            if len(topic_parts) < 5:
+                self.logger.warning(f"잘못된 토픽 형식: {msg.topic}")
+                return
+                
+            application_id = topic_parts[1]
+            device_id = topic_parts[3]
+            event_type = topic_parts[4]  # 'up' 또는 'join'
             
             self.logger.debug(f"메시지 수신: {msg.topic} - 크기: {len(msg.payload)} bytes")
             
-            topic_parts = msg.topic.split('/')
-            application_id = topic_parts[1]
-            device_id = topic_parts[3]
-            
             payload = json.loads(msg.payload.decode('utf-8'))
             
-            log_data = {
-                "timestamp": datetime.now().isoformat(),
-                "topic": msg.topic,
-                "application_id": application_id,
-                "device_id": device_id,
-                "payload": payload,
-                "raw_payload_size": len(msg.payload),
-                "hostname": socket.gethostname()
-            }
-            
-            # 페이로드 주요 정보 추출 및 로깅
-            payload_summary = self._extract_payload_summary(payload)
-            self.logger.info(f"LoRa 업링크 데이터 수신 - App: {application_id}, Device: {device_id}")
-            self.logger.info(f"  📡 RSSI: {payload_summary.get('rssi', 'N/A')} dBm, SNR: {payload_summary.get('snr', 'N/A')} dB")
-            
-            # 디코딩된 데이터 표시
-            decoded_data = payload_summary.get('decoded_data', {})
-            if 'text' in decoded_data:
-                self.logger.info(f"  📝 텍스트: '{decoded_data['text']}'")
-            if 'hex' in decoded_data:
-                self.logger.info(f"  📊 HEX: {decoded_data['hex']} (크기: {payload_summary.get('data_size', 0)} bytes)")
-            
-            self.logger.info(f"  🔢 Frame Count: {payload_summary.get('fCnt', 'N/A')}, Port: {payload_summary.get('fPort', 'N/A')}")
-            
-            # 원본 Base64 데이터는 debug 레벨로
-            self.logger.debug(f"  📦 Base64: {payload_summary.get('data', 'N/A')}")
-            
-            # 데이터 저장 (SQLite + JSON 병행)
-            self.save_uplink_data(payload_summary, application_id, device_id, msg.topic, log_data)
-            self.stats['messages_processed'] += 1
+            if event_type == 'up':
+                self._handle_uplink_message(application_id, device_id, msg.topic, payload)
+            elif event_type == 'join':
+                self._handle_join_event(application_id, device_id, msg.topic, payload)
+            else:
+                self.logger.warning(f"알 수 없는 이벤트 유형: {event_type} (토픽: {msg.topic})")
             
         except json.JSONDecodeError as e:
             self.stats['errors'] += 1
@@ -147,6 +133,59 @@ class LoRaGatewayLogger:
         except Exception as e:
             self.stats['errors'] += 1
             self.logger.error(f"메시지 처리 오류: {e} - Topic: {msg.topic}", exc_info=True)
+    
+    def _handle_uplink_message(self, application_id: str, device_id: str, topic: str, payload: dict):
+        """업링크 메시지 처리"""
+        self.stats['messages_received'] += 1
+        self.stats['last_message_time'] = datetime.now()
+        
+        log_data = {
+            "timestamp": datetime.now().isoformat(),
+            "topic": topic,
+            "application_id": application_id,
+            "device_id": device_id,
+            "payload": payload,
+            "raw_payload_size": len(str(payload)),
+            "hostname": socket.gethostname()
+        }
+        
+        # 페이로드 주요 정보 추출 및 로깅
+        payload_summary = self._extract_payload_summary(payload)
+        self.logger.info(f"LoRa 업링크 데이터 수신 - App: {application_id}, Device: {device_id}")
+        self.logger.info(f"  📡 RSSI: {payload_summary.get('rssi', 'N/A')} dBm, SNR: {payload_summary.get('snr', 'N/A')} dB")
+        
+        # 디코딩된 데이터 표시
+        decoded_data = payload_summary.get('decoded_data', {})
+        if 'text' in decoded_data:
+            self.logger.info(f"  📝 텍스트: '{decoded_data['text']}'")
+        if 'hex' in decoded_data:
+            self.logger.info(f"  📊 HEX: {decoded_data['hex']} (크기: {payload_summary.get('data_size', 0)} bytes)")
+        
+        self.logger.info(f"  🔢 Frame Count: {payload_summary.get('fCnt', 'N/A')}, Port: {payload_summary.get('fPort', 'N/A')}")
+        
+        # 원본 Base64 데이터는 debug 레벨로
+        self.logger.debug(f"  📦 Base64: {payload_summary.get('data', 'N/A')}")
+        
+        # 데이터 저장 (SQLite + JSON 병행)
+        self.save_uplink_data(payload_summary, application_id, device_id, topic, log_data)
+        self.stats['messages_processed'] += 1
+    
+    def _handle_join_event(self, application_id: str, device_id: str, topic: str, payload: dict):
+        """JOIN 이벤트 처리"""
+        self.stats['joins_received'] += 1
+        self.stats['last_message_time'] = datetime.now()
+        
+        # JOIN 이벤트 정보 추출
+        join_summary = self._extract_join_summary(payload)
+        
+        self.logger.info(f"🔗 LoRa JOIN 이벤트 수신 - App: {application_id}, Device: {device_id}")
+        self.logger.info(f"  🆔 DevEUI: {join_summary.get('devEUI', 'N/A')}")
+        self.logger.info(f"  🏷️  DevAddr: {join_summary.get('devAddr', 'N/A')}")
+        self.logger.info(f"  📡 RSSI: {join_summary.get('rssi', 'N/A')} dBm, SNR: {join_summary.get('snr', 'N/A')} dB")
+        
+        # JOIN 이벤트 저장
+        self.save_join_event(join_summary, application_id, device_id, topic)
+        self.stats['joins_processed'] += 1
     
     def _extract_payload_summary(self, payload):
         """LoRa 페이로드에서 주요 정보 추출 (SQLite 연동 준비)"""
@@ -224,6 +263,80 @@ class LoRaGatewayLogger:
             
         return decoded_info
     
+    def _extract_join_summary(self, payload):
+        """JOIN 이벤트에서 주요 정보 추출"""
+        summary = {}
+        
+        try:
+            # 기본 디바이스 정보
+            summary['devEUI'] = payload.get('devEUI')
+            summary['joinEUI'] = payload.get('joinEUI') or payload.get('appEUI')  # joinEUI 또는 appEUI
+            summary['devAddr'] = payload.get('devAddr')
+            
+            # RSSI와 SNR 추출 (첫 번째 게이트웨이 기준)
+            if 'rxInfo' in payload and len(payload['rxInfo']) > 0:
+                rx_info = payload['rxInfo'][0]
+                summary['rssi'] = rx_info.get('rssi')
+                summary['snr'] = rx_info.get('loRaSNR')
+                
+                # 위치 정보도 추출
+                if 'location' in rx_info:
+                    summary['latitude'] = rx_info['location'].get('latitude')
+                    summary['longitude'] = rx_info['location'].get('longitude')
+            
+            # 전송 정보 추출
+            if 'txInfo' in payload:
+                tx_info = payload['txInfo']
+                summary['frequency'] = tx_info.get('frequency')
+                summary['dataRate'] = tx_info.get('dr')
+                
+        except Exception as e:
+            self.logger.debug(f"JOIN 이벤트 정보 추출 오류: {e}")
+            
+        return summary
+    
+    def save_join_event(self, join_summary: dict, application_id: str, 
+                       device_id: str, topic: str):
+        """JOIN 이벤트를 SQLite와 JSON 파일에 저장"""
+        
+        # 1. SQLite에 저장
+        if self.db:
+            try:
+                join_event = JoinEvent.from_payload_summary(
+                    join_summary, application_id, device_id, 
+                    topic, socket.gethostname()
+                )
+                event_id = self.db.insert_join_event(join_event)
+                if event_id:
+                    self.stats['sqlite_saves'] += 1
+                    self.logger.debug(f"JOIN 이벤트 SQLite 저장 완료 - ID: {event_id}")
+                    
+            except Exception as e:
+                self.logger.error(f"JOIN 이벤트 SQLite 저장 오류: {e}")
+        
+        # 2. JSON 파일에 저장 (선택적)
+        self.log_join_event({
+            "timestamp": datetime.now().isoformat(),
+            "event_type": "join",
+            "topic": topic,
+            "application_id": application_id,
+            "device_id": device_id,
+            "join_summary": join_summary,
+            "hostname": socket.gethostname()
+        })
+    
+    def log_join_event(self, data):
+        """JOIN 이벤트를 JSON 파일에 저장"""
+        log_filename = f"join_events_{datetime.now().strftime('%Y%m%d')}.json"
+        
+        try:
+            with open(log_filename, 'a', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False)
+                f.write('\n')
+                self.stats['json_saves'] += 1
+        except Exception as e:
+            logging.error(f"JOIN 이벤트 JSON 저장 오류: {e}")
+    
     def save_uplink_data(self, payload_summary: dict, application_id: str, 
                         device_id: str, topic: str, legacy_log_data: dict):
         """업링크 데이터를 SQLite와 JSON 파일에 저장"""
@@ -265,8 +378,9 @@ class LoRaGatewayLogger:
         if self.stats['start_time']:
             uptime = datetime.now() - self.stats['start_time']
             sqlite_info = f"SQLite: {self.stats['sqlite_saves']}, " if self.db else ""
-            self.logger.info(f"통계 - 가동시간: {uptime}, 수신: {self.stats['messages_received']}, "
-                           f"처리: {self.stats['messages_processed']}, "
+            self.logger.info(f"통계 - 가동시간: {uptime}, "
+                           f"업링크: {self.stats['messages_received']}/{self.stats['messages_processed']}, "
+                           f"JOIN: {self.stats['joins_received']}/{self.stats['joins_processed']}, "
                            f"{sqlite_info}JSON: {self.stats['json_saves']}, "
                            f"오류: {self.stats['errors']}")
     

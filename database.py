@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 from dataclasses import asdict
-from models import UplinkMessage
+from models import UplinkMessage, JoinEvent
 
 
 class LoRaDatabase:
@@ -76,8 +76,56 @@ class LoRaDatabase:
                     ON uplink_messages(timestamp)
                 """)
                 
+                # JOIN 이벤트 테이블 생성
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS join_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp DATETIME NOT NULL,
+                        application_id TEXT NOT NULL,
+                        device_id TEXT NOT NULL,
+                        dev_eui TEXT NOT NULL,
+                        
+                        -- JOIN 관련 정보
+                        join_eui TEXT,
+                        dev_addr TEXT,
+                        
+                        -- 네트워크 정보
+                        frequency INTEGER,
+                        data_rate INTEGER,
+                        
+                        -- 신호 품질
+                        rssi REAL,
+                        snr REAL,
+                        
+                        -- 위치 정보
+                        latitude REAL,
+                        longitude REAL,
+                        
+                        -- 메타데이터
+                        hostname TEXT,
+                        raw_topic TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # JOIN 이벤트 인덱스 생성
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_join_device_timestamp 
+                    ON join_events(device_id, timestamp)
+                """)
+                
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_join_timestamp 
+                    ON join_events(timestamp)
+                """)
+                
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_join_dev_eui 
+                    ON join_events(dev_eui)
+                """)
+                
                 conn.commit()
-                self.logger.info("SQLite 데이터베이스 초기화 완료")
+                self.logger.info("SQLite 데이터베이스 초기화 완료 (업링크 + JOIN 테이블)")
                 
         except Exception as e:
             self.logger.error(f"데이터베이스 초기화 오류: {e}")
@@ -114,6 +162,39 @@ class LoRaDatabase:
                 
         except Exception as e:
             self.logger.error(f"업링크 메시지 저장 오류: {e}")
+            return None
+    
+    def insert_join_event(self, event: JoinEvent) -> Optional[int]:
+        """JOIN 이벤트를 데이터베이스에 저장"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                # dataclass를 dict로 변환 (id, created_at 제외)
+                data = asdict(event)
+                data.pop('id', None)
+                data.pop('created_at', None)
+                
+                # timestamp를 문자열로 변환
+                if isinstance(data['timestamp'], datetime):
+                    data['timestamp'] = data['timestamp'].isoformat()
+                
+                columns = list(data.keys())
+                placeholders = ['?' for _ in columns]
+                values = list(data.values())
+                
+                query = f"""
+                    INSERT INTO join_events ({', '.join(columns)})
+                    VALUES ({', '.join(placeholders)})
+                """
+                
+                cursor = conn.execute(query, values)
+                conn.commit()
+                
+                row_id = cursor.lastrowid
+                self.logger.debug(f"JOIN 이벤트 저장 완료 - ID: {row_id}")
+                return row_id
+                
+        except Exception as e:
+            self.logger.error(f"JOIN 이벤트 저장 오류: {e}")
             return None
     
     def get_recent_messages(self, limit: int = 100) -> List[UplinkMessage]:
@@ -153,10 +234,48 @@ class LoRaDatabase:
             self.logger.error(f"디바이스 메시지 조회 오류: {e}")
             return []
     
+    def get_recent_join_events(self, limit: int = 100) -> List[JoinEvent]:
+        """최근 JOIN 이벤트 조회"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT * FROM join_events 
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                """, (limit,))
+                
+                rows = cursor.fetchall()
+                return [self._row_to_join_event(row) for row in rows]
+                
+        except Exception as e:
+            self.logger.error(f"JOIN 이벤트 조회 오류: {e}")
+            return []
+    
+    def get_device_join_events(self, device_id: str, limit: int = 100) -> List[JoinEvent]:
+        """특정 디바이스의 JOIN 이벤트 조회"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT * FROM join_events 
+                    WHERE device_id = ?
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                """, (device_id, limit))
+                
+                rows = cursor.fetchall()
+                return [self._row_to_join_event(row) for row in rows]
+                
+        except Exception as e:
+            self.logger.error(f"디바이스 JOIN 이벤트 조회 오류: {e}")
+            return []
+    
     def get_statistics(self) -> dict:
         """기본 통계 정보 조회"""
         try:
             with sqlite3.connect(self.db_path) as conn:
+                # 업링크 메시지 통계
                 cursor = conn.execute("""
                     SELECT 
                         COUNT(*) as total_messages,
@@ -166,14 +285,29 @@ class LoRaDatabase:
                         MAX(timestamp) as last_message
                     FROM uplink_messages
                 """)
+                uplink_stats = cursor.fetchone()
                 
-                row = cursor.fetchone()
+                # JOIN 이벤트 통계
+                cursor = conn.execute("""
+                    SELECT 
+                        COUNT(*) as total_joins,
+                        COUNT(DISTINCT device_id) as unique_join_devices,
+                        MIN(timestamp) as first_join,
+                        MAX(timestamp) as last_join
+                    FROM join_events
+                """)
+                join_stats = cursor.fetchone()
+                
                 return {
-                    'total_messages': row[0],
-                    'unique_devices': row[1],
-                    'unique_applications': row[2],
-                    'first_message': row[3],
-                    'last_message': row[4]
+                    'total_messages': uplink_stats[0],
+                    'unique_devices': uplink_stats[1],
+                    'unique_applications': uplink_stats[2],
+                    'first_message': uplink_stats[3],
+                    'last_message': uplink_stats[4],
+                    'total_joins': join_stats[0],
+                    'unique_join_devices': join_stats[1],
+                    'first_join': join_stats[2],
+                    'last_join': join_stats[3]
                 }
                 
         except Exception as e:
@@ -194,6 +328,27 @@ class LoRaDatabase:
             payload_size=row['payload_size'],
             frame_count=row['frame_count'],
             f_port=row['f_port'],
+            frequency=row['frequency'],
+            data_rate=row['data_rate'],
+            rssi=row['rssi'],
+            snr=row['snr'],
+            latitude=row['latitude'],
+            longitude=row['longitude'],
+            hostname=row['hostname'],
+            raw_topic=row['raw_topic'],
+            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None
+        )
+    
+    def _row_to_join_event(self, row: sqlite3.Row) -> JoinEvent:
+        """SQLite Row를 JoinEvent 객체로 변환"""
+        return JoinEvent(
+            id=row['id'],
+            timestamp=datetime.fromisoformat(row['timestamp']) if row['timestamp'] else None,
+            application_id=row['application_id'],
+            device_id=row['device_id'],
+            dev_eui=row['dev_eui'],
+            join_eui=row['join_eui'],
+            dev_addr=row['dev_addr'],
             frequency=row['frequency'],
             data_rate=row['data_rate'],
             rssi=row['rssi'],
