@@ -274,7 +274,8 @@ class LoRaGatewayLogger:
         try:
             self.stats['start_time'] = datetime.now()
             
-            self.client = mqtt.Client()
+            # MQTT 클라이언트 생성 (콜백 API v1 명시적 사용)
+            self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
             self.client.on_connect = self.on_connect
             self.client.on_message = self.on_message
             self.client.on_disconnect = self.on_disconnect
