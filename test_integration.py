@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class IntegrationTest:
-    def __init__(self, broker_host="localhost", broker_port=1883):
+    def __init__(self, broker_host="127.0.0.1", broker_port=1883):
         self.broker_host = broker_host
         self.broker_port = broker_port
         self.publisher = MockLoRaDataPublisher(broker_host, broker_port)
@@ -24,7 +24,25 @@ class IntegrationTest:
     def start_mqtt_broker(self):
         """Docker를 사용하여 MQTT 브로커 시작"""
         try:
-            logger.info("MQTT 브로커 시작...")
+            # 기존 컨테이너 확인
+            result = subprocess.run([
+                "docker", "ps", "-q", "-f", "name=test-mosquitto"
+            ], capture_output=True, text=True)
+            
+            if result.stdout.strip():
+                logger.info("기존 MQTT 브로커 컨테이너 사용")
+                return True
+                
+            # 중지된 컨테이너 확인 및 제거
+            result = subprocess.run([
+                "docker", "ps", "-aq", "-f", "name=test-mosquitto"
+            ], capture_output=True, text=True)
+            
+            if result.stdout.strip():
+                logger.info("기존 컨테이너 제거 후 재시작...")
+                subprocess.run(["docker", "rm", "-f", "test-mosquitto"], check=True)
+            
+            logger.info("새로운 MQTT 브로커 시작...")
             subprocess.run([
                 "docker", "run", "-d", "--name", "test-mosquitto", 
                 "-p", "1883:1883", "-p", "9001:9001",
@@ -33,8 +51,8 @@ class IntegrationTest:
             time.sleep(5)  # 브로커가 시작될 때까지 대기
             logger.info("MQTT 브로커가 시작됨")
             return True
-        except subprocess.CalledProcessError:
-            logger.warning("Docker 브로커 시작 실패 - 기존 브로커 사용")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Docker 브로커 시작 실패: {e}")
             return False
             
     def stop_mqtt_broker(self):
@@ -140,7 +158,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='LoRa Gateway Logger 통합 테스트')
-    parser.add_argument('--broker', default='localhost', help='MQTT 브로커 호스트')
+    parser.add_argument('--broker', default='127.0.0.1', help='MQTT 브로커 호스트')
     parser.add_argument('--port', type=int, default=1883, help='MQTT 브로커 포트')
     
     args = parser.parse_args()

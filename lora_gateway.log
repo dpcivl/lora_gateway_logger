@@ -1,0 +1,71 @@
+2025-07-31 11:03:41,361 - root - INFO - [main.py:192] - LoRa 게이트웨이 로거 시작
+2025-07-31 11:03:41,362 - __main__ - INFO - [main.py:143] - MQTT 브로커 연결 시도: localhost:1883
+2025-07-31 11:03:41,365 - __main__ - ERROR - [main.py:163] - 오류: [Errno 11003] getaddrinfo failed
+Traceback (most recent call last):
+  File "C:\Users\wogud\Documents\hyoin\workspace\tdd-practice\lora_gateway_logger\main.py", line 144, in start
+    self.client.connect(self.broker_host, self.broker_port, 60)
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 914, in connect
+    return self.reconnect()
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 1044, in reconnect
+    sock = self._create_socket_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 3685, in _create_socket_connection
+    return socket.create_connection(addr, timeout=self._connect_timeout, source_address=source)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 828, in create_connection
+    for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 963, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11003] getaddrinfo failed
+2025-07-31 11:03:41,373 - __main__ - INFO - [main.py:128] - 통계 - 가동시간: 0:00:00.011001, 수신: 0, 처리: 0, 오류: 0
+2025-07-31 11:05:00,035 - root - INFO - [main.py:192] - LoRa 게이트웨이 로거 시작
+2025-07-31 11:05:00,035 - __main__ - INFO - [main.py:143] - MQTT 브로커 연결 시도: 127.0.0.1:1883
+2025-07-31 11:05:00,038 - __main__ - ERROR - [main.py:163] - 오류: [WinError 10106] 서비스 공급자를 로드하거나 초기화할 수 없습니다
+Traceback (most recent call last):
+  File "C:\Users\wogud\Documents\hyoin\workspace\tdd-practice\lora_gateway_logger\main.py", line 144, in start
+    self.client.connect(self.broker_host, self.broker_port, 60)
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 914, in connect
+    return self.reconnect()
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 1044, in reconnect
+    sock = self._create_socket_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 3685, in _create_socket_connection
+    return socket.create_connection(addr, timeout=self._connect_timeout, source_address=source)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 852, in create_connection
+    raise exceptions[0]
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 832, in create_connection
+    sock = socket(af, socktype, proto)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 233, in __init__
+    _socket.socket.__init__(self, family, type, proto, fileno)
+OSError: [WinError 10106] 서비스 공급자를 로드하거나 초기화할 수 없습니다
+2025-07-31 11:05:00,043 - __main__ - INFO - [main.py:128] - 통계 - 가동시간: 0:00:00.007999, 수신: 0, 처리: 0, 오류: 0
+2025-07-31 11:06:35,993 - root - INFO - [main.py:192] - LoRa 게이트웨이 로거 시작
+2025-07-31 11:06:35,993 - __main__ - INFO - [main.py:143] - MQTT 브로커 연결 시도: 127.0.0.1:1883
+2025-07-31 11:06:35,996 - __main__ - ERROR - [main.py:163] - 오류: [WinError 10106] 서비스 공급자를 로드하거나 초기화할 수 없습니다
+Traceback (most recent call last):
+  File "C:\Users\wogud\Documents\hyoin\workspace\tdd-practice\lora_gateway_logger\main.py", line 144, in start
+    self.client.connect(self.broker_host, self.broker_port, 60)
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 914, in connect
+    return self.reconnect()
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 1044, in reconnect
+    sock = self._create_socket_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\site-packages\paho\mqtt\client.py", line 3685, in _create_socket_connection
+    return socket.create_connection(addr, timeout=self._connect_timeout, source_address=source)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 852, in create_connection
+    raise exceptions[0]
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 832, in create_connection
+    sock = socket(af, socktype, proto)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wogud\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 233, in __init__
+    _socket.socket.__init__(self, family, type, proto, fileno)
+OSError: [WinError 10106] 서비스 공급자를 로드하거나 초기화할 수 없습니다
+2025-07-31 11:06:36,001 - __main__ - INFO - [main.py:128] - 통계 - 가동시간: 0:00:00.008002, 수신: 0, 처리: 0, 오류: 0
