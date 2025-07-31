@@ -388,8 +388,13 @@ class LoRaGatewayLogger:
         try:
             self.stats['start_time'] = datetime.now()
             
-            # MQTT 클라이언트 생성 (콜백 API v1 명시적 사용)
-            self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
+            # MQTT 클라이언트 생성 (paho-mqtt 버전 호환성)
+            try:
+                # paho-mqtt 2.0+ 버전
+                self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
+            except AttributeError:
+                # paho-mqtt 1.x 버전 (라즈베리파이 기본)
+                self.client = mqtt.Client()
             self.client.on_connect = self.on_connect
             self.client.on_message = self.on_message
             self.client.on_disconnect = self.on_disconnect
