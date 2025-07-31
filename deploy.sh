@@ -6,7 +6,7 @@
 set -e
 
 # 설정
-RASPBERRY_IP=${1:-"192.168.1.100"}
+RASPBERRY_IP=${1:-"192.168.0.110"}
 USERNAME=${2:-"pi"}
 REMOTE_DIR="/home/$USERNAME/lora_gateway_logger"
 LOCAL_DIR="."
