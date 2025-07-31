@@ -44,13 +44,13 @@ class TestLoRaGatewayLogger(unittest.TestCase):
         mock_client.subscribe.assert_not_called()
         mock_logging.error.assert_called_once()
         
-    @patch('main.logging')
-    def test_on_message_valid_payload(self, mock_logging):
+    def test_on_message_valid_payload(self):
         """유효한 메시지 처리 테스트"""
         mock_client = Mock()
         mock_msg = Mock()
         mock_msg.topic = "application/123/device/456/event/up"
-        mock_msg.payload.decode.return_value = '{"data": "test_data", "rssi": -80}'
+        payload_data = '{"data": "test_data", "rssi": -80}'
+        mock_msg.payload = payload_data.encode('utf-8')  # 실제 bytes 객체로 설정
         
         with patch.object(self.logger, 'log_uplink_data') as mock_log:
             self.logger.on_message(mock_client, None, mock_msg)
@@ -61,16 +61,16 @@ class TestLoRaGatewayLogger(unittest.TestCase):
             self.assertEqual(call_args['device_id'], '456')
             self.assertEqual(call_args['topic'], mock_msg.topic)
             
-    @patch('main.logging')
-    def test_on_message_invalid_json(self, mock_logging):
+    def test_on_message_invalid_json(self):
         """잘못된 JSON 메시지 처리 테스트"""
         mock_client = Mock()
         mock_msg = Mock()
         mock_msg.topic = "application/123/device/456/event/up"
-        mock_msg.payload.decode.return_value = 'invalid json'
+        mock_msg.payload = b'invalid json'  # 실제 bytes 객체로 설정
         
-        self.logger.on_message(mock_client, None, mock_msg)
-        mock_logging.error.assert_called()
+        with patch.object(self.logger.logger, 'error') as mock_error:
+            self.logger.on_message(mock_client, None, mock_msg)
+            mock_error.assert_called()
         
     def test_log_uplink_data(self):
         """업링크 데이터 로깅 테스트"""
