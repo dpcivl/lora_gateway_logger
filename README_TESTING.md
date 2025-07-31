@@ -70,6 +70,7 @@ echo "paho-mqtt>=1.6.0" > requirements.txt
 ### 방법 1: 자동 배포 (권장)
 
 **PC에서** 배포 스크립트 생성 후 실행:
+(git bash에서 실행하는 것을 권장)
 
 ```bash
 # 1. PC에서 배포 스크립트 생성 (아래 스크립트 내용 복사)
@@ -82,9 +83,15 @@ chmod +x deploy.sh
 
 ### 방법 2: 수동 배포
 
-**PC에서** 파일 전송:
+**PC에서** 파일 전송 (Git Bash):
 ```bash
-# 파일 동기화
+# 1. 라즈베리파이에 디렉토리 생성  
+ssh pi@192.168.0.110 "mkdir -p ~/lora_gateway_logger"
+
+# 2. 파일 전송 (scp 사용 - Windows Git Bash 호환)
+scp main.py requirements.txt pi@192.168.0.110:~/lora_gateway_logger/
+
+# 또는 rsync가 설치된 경우 (WSL 등)
 rsync -avz --exclude='*.log' --exclude='__pycache__' ./ pi@192.168.0.110:~/lora_gateway_logger/
 ```
 
@@ -217,9 +224,25 @@ chmod +w /home/pi/lora_gateway_logger
 ## 📋 **요약: 키 설정부터 배포까지**
 
 1. **PC에서** SSH 키 생성 및 복사 ✅ (완료)
-2. **PC에서** `requirements.txt` 생성
-3. **PC에서** 파일 전송 (rsync 또는 배포 스크립트)
+2. **PC에서** `requirements.txt` 생성 ✅ (완료)
+3. **PC에서** 파일 전송 (scp 또는 배포 스크립트)
 4. **라즈베리파이에서** 의존성 설치 및 실행
 5. **라즈베리파이에서** 서비스 등록 (선택사항)
 
-**다음 단계**: PC에서 `rsync` 명령어로 파일을 라즈베리파이에 전송하고, SSH로 접속해서 프로그램을 실행하면 됩니다!
+## 🚀 **간단 배포 명령어 (Git Bash)**
+
+```bash
+# 1. 디렉토리 생성
+ssh pi@192.168.0.110 "mkdir -p ~/lora_gateway_logger"
+
+# 2. 파일 전송
+scp main.py requirements.txt pi@192.168.0.110:~/lora_gateway_logger/
+
+# 3. 의존성 설치
+ssh pi@192.168.0.110 "cd ~/lora_gateway_logger && pip3 install -r requirements.txt"
+
+# 4. 프로그램 실행
+ssh pi@192.168.0.110 "cd ~/lora_gateway_logger && python3 main.py"
+```
+
+**다음 단계**: 위의 명령어들을 Git Bash에서 순서대로 실행하면 됩니다!

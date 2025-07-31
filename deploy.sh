@@ -14,12 +14,8 @@ LOCAL_DIR="."
 echo "=== LoRa Gateway Logger 배포 스크립트 ==="
 echo "대상: $USERNAME@$RASPBERRY_IP:$REMOTE_DIR"
 
-# 1. 라즈베리파이 연결 테스트
-echo "1. 라즈베리파이 연결 테스트..."
-if ! ping -c 1 $RASPBERRY_IP > /dev/null 2>&1; then
-    echo "오류: $RASPBERRY_IP 에 연결할 수 없습니다."
-    exit 1
-fi
+# 1. 라즈베리파이 연결 테스트 (ping은 Windows에서 문제가 있을 수 있으므로 건너뛰기)
+echo "1. 라즈베리파이 연결 테스트 건너뛰기 (SSH로 직접 확인)"
 
 # 2. SSH 연결 테스트
 echo "2. SSH 연결 테스트..."
@@ -34,9 +30,19 @@ ssh $USERNAME@$RASPBERRY_IP "mkdir -p $REMOTE_DIR/logs"
 
 # 4. 파일 동기화
 echo "4. 파일 동기화..."
-rsync -avz --exclude='*.log' --exclude='uplink_data_*.json' --exclude='__pycache__' \
-    --exclude='.git' --exclude='logs/' \
-    $LOCAL_DIR/ $USERNAME@$RASPBERRY_IP:$REMOTE_DIR/
+# Windows Git Bash에서는 scp 사용
+if command -v rsync >/dev/null 2>&1; then
+    rsync -avz --exclude='*.log' --exclude='uplink_data_*.json' --exclude='__pycache__' \
+        --exclude='.git' --exclude='logs/' \
+        $LOCAL_DIR/ $USERNAME@$RASPBERRY_IP:$REMOTE_DIR/
+else
+    echo "rsync가 없어서 scp 사용..."
+    scp main.py requirements.txt $USERNAME@$RASPBERRY_IP:$REMOTE_DIR/
+    # 추가 Python 파일들이 있다면 함께 전송
+    if ls *.py >/dev/null 2>&1; then
+        scp *.py $USERNAME@$RASPBERRY_IP:$REMOTE_DIR/ 2>/dev/null || true
+    fi
+fi
 
 # 5. 원격에서 의존성 설치
 echo "5. Python 패키지 설치..."
