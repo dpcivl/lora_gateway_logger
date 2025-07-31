@@ -1,0 +1,3 @@
+- 구현 언어: Python
+- 개발 환경: Windows 11 Home Ed
+- 타겟 환경: 라즈베리파이 (RAK7248)
