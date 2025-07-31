@@ -140,8 +140,20 @@ class LoRaGatewayLogger:
             if self.username and self.password:
                 self.client.username_pw_set(self.username, self.password)
             
-            self.logger.info(f"MQTT 브로커 연결 시도: {self.broker_host}:{self.broker_port}")
-            self.client.connect(self.broker_host, self.broker_port, 60)
+            # Windows 네트워크 스택 문제 해결 시도
+            import time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.logger.info(f"MQTT 브로커 연결 시도 {attempt + 1}/{max_retries}: {self.broker_host}:{self.broker_port}")
+                    self.client.connect(self.broker_host, self.broker_port, 60)
+                    break
+                except (OSError, socket.error) as e:
+                    if attempt < max_retries - 1:
+                        self.logger.warning(f"연결 실패 (시도 {attempt + 1}): {e}, 2초 후 재시도...")
+                        time.sleep(2)
+                    else:
+                        raise
             
             # 주기적으로 통계 출력 (별도 스레드)
             import threading
