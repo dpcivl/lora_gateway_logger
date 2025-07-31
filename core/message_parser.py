@@ -16,13 +16,13 @@ class LoRaMessageParser:
         """토픽을 파싱하여 application_id, device_id, event_type 추출"""
         try:
             topic_parts = topic.split('/')
-            if len(topic_parts) < 5:
+            if len(topic_parts) < 6:
                 self.logger.warning(f"잘못된 토픽 형식: {topic}")
                 return None
                 
             application_id = topic_parts[1]
             device_id = topic_parts[3]
-            event_type = topic_parts[4]  # 'up' 또는 'join'
+            event_type = topic_parts[5]  # 'up' 또는 'join'
             
             return application_id, device_id, event_type
             

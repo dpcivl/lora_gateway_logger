@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 라즈베리파이 배포 스크립트
-# 사용법: ./deploy.sh [raspberry-pi-ip] [optional-username]
+# ssh-agent를 사용한 배포 스크립트
+# 사용법: ./deploy_with_agent.sh [raspberry-pi-ip] [optional-username]
 
 set -e
 
@@ -11,24 +11,27 @@ USERNAME=${2:-"pi"}
 REMOTE_DIR="/home/$USERNAME/lora_gateway_logger"
 LOCAL_DIR="."
 
-echo "=== LoRa Gateway Logger 배포 스크립트 ==="
+echo "=== LoRa Gateway Logger 배포 스크립트 (ssh-agent 사용) ==="
 echo "대상: $USERNAME@$RASPBERRY_IP:$REMOTE_DIR"
 
-# 1. 라즈베리파이 연결 테스트 (ping은 Windows에서 문제가 있을 수 있으므로 건너뛰기)
-echo "1. 라즈베리파이 연결 테스트 건너뛰기 (SSH로 직접 확인)"
+# ssh-agent 시작 및 키 추가
+echo "1. SSH agent 설정..."
+eval $(ssh-agent -s)
 
-# 2. SSH 연결 테스트
+echo "SSH 키 passphrase를 입력하세요 (이번 한 번만 입력하면 됩니다):"
+ssh-add ~/.ssh/id_rsa
+
+echo ""
 echo "2. SSH 연결 테스트..."
 if ! ssh -o ConnectTimeout=10 $USERNAME@$RASPBERRY_IP "echo 'SSH 연결 성공'" > /dev/null 2>&1; then
-    echo "오류: SSH 연결에 실패했습니다. SSH 키가 설정되어 있는지 확인하세요."
+    echo "오류: SSH 연결에 실패했습니다."
+    kill $SSH_AGENT_PID
     exit 1
 fi
 
-# 3. 원격 디렉토리 생성
 echo "3. 원격 디렉토리 생성..."
 ssh $USERNAME@$RASPBERRY_IP "mkdir -p $REMOTE_DIR/logs"
 
-# 4. 파일 동기화
 echo "4. 파일 동기화..."
 # Windows Git Bash에서는 scp 사용
 if command -v rsync >/dev/null 2>&1; then
@@ -51,11 +54,9 @@ else
     fi
 fi
 
-# 5. 원격에서 의존성 설치
 echo "5. Python 패키지 설치..."
 ssh $USERNAME@$RASPBERRY_IP "cd $REMOTE_DIR && pip3 install -r requirements.txt"
 
-# 6. systemd 서비스 파일 생성
 echo "6. systemd 서비스 설정..."
 ssh $USERNAME@$RASPBERRY_IP "sudo tee /etc/systemd/system/lora-gateway-logger.service > /dev/null << 'EOF'
 [Unit]
@@ -75,17 +76,17 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=multi-user.target
 EOF"
 
-# 7. 서비스 활성화 및 시작
 echo "7. 서비스 활성화..."
 ssh $USERNAME@$RASPBERRY_IP "sudo systemctl daemon-reload && sudo systemctl enable lora-gateway-logger.service"
 
-# 8. 현재 실행 중인 서비스가 있다면 재시작
 echo "8. 서비스 재시작..."
 ssh $USERNAME@$RASPBERRY_IP "sudo systemctl restart lora-gateway-logger.service"
 
-# 9. 서비스 상태 확인
 echo "9. 배포 완료 - 서비스 상태 확인:"
 ssh $USERNAME@$RASPBERRY_IP "sudo systemctl status lora-gateway-logger.service --no-pager"
+
+# ssh-agent 종료
+kill $SSH_AGENT_PID
 
 echo ""
 echo "=== 배포 완료 ==="
@@ -94,5 +95,5 @@ echo "ssh $USERNAME@$RASPBERRY_IP 'sudo journalctl -u lora-gateway-logger.servic
 echo ""
 echo "서비스 제어 명령어:"
 echo "  시작: ssh $USERNAME@$RASPBERRY_IP 'sudo systemctl start lora-gateway-logger.service'"
-echo "  중지: ssh $USERNAME@$RASPBERRY_PI 'sudo systemctl stop lora-gateway-logger.service'"
+echo "  중지: ssh $USERNAME@$RASPBERRY_IP 'sudo systemctl stop lora-gateway-logger.service'"
 echo "  재시작: ssh $USERNAME@$RASPBERRY_IP 'sudo systemctl restart lora-gateway-logger.service'"
