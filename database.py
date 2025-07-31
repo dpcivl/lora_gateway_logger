@@ -15,6 +15,11 @@ class LoRaDatabase:
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)
         self._init_database()
+        
+    def close(self):
+        """데이터베이스 연결 정리 (테스트용)"""
+        # SQLite는 connection pooling을 하지 않으므로 특별한 정리 불필요
+        pass
     
     def _init_database(self):
         """데이터베이스 초기화 및 테이블 생성"""
