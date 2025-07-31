@@ -97,7 +97,13 @@ class LoRaGatewayLogger:
                 "hostname": socket.gethostname()
             }
             
+            # 페이로드 주요 정보 추출 및 로깅
+            payload_summary = self._extract_payload_summary(payload)
             self.logger.info(f"LoRa 업링크 데이터 수신 - App: {application_id}, Device: {device_id}")
+            self.logger.info(f"  📡 RSSI: {payload_summary.get('rssi', 'N/A')} dBm, SNR: {payload_summary.get('snr', 'N/A')} dB")
+            self.logger.info(f"  📊 Data: {payload_summary.get('data', 'N/A')} (크기: {payload_summary.get('data_size', 0)} bytes)")
+            self.logger.info(f"  🔢 Frame Count: {payload_summary.get('fCnt', 'N/A')}, Port: {payload_summary.get('fPort', 'N/A')}")
+            
             self.log_uplink_data(log_data)
             self.stats['messages_processed'] += 1
             
@@ -107,6 +113,43 @@ class LoRaGatewayLogger:
         except Exception as e:
             self.stats['errors'] += 1
             self.logger.error(f"메시지 처리 오류: {e} - Topic: {msg.topic}", exc_info=True)
+    
+    def _extract_payload_summary(self, payload):
+        """LoRa 페이로드에서 주요 정보 추출 (SQLite 연동 준비)"""
+        summary = {}
+        
+        try:
+            # RSSI와 SNR 추출 (첫 번째 게이트웨이 기준)
+            if 'rxInfo' in payload and len(payload['rxInfo']) > 0:
+                rx_info = payload['rxInfo'][0]
+                summary['rssi'] = rx_info.get('rssi')
+                summary['snr'] = rx_info.get('loRaSNR')
+                
+                # 위치 정보도 추출
+                if 'location' in rx_info:
+                    summary['latitude'] = rx_info['location'].get('latitude')
+                    summary['longitude'] = rx_info['location'].get('longitude')
+            
+            # 데이터 페이로드 추출
+            if 'data' in payload:
+                summary['data'] = payload['data']
+                summary['data_size'] = len(payload['data']) // 2  # hex string의 실제 바이트 크기
+            
+            # 프레임 정보 추출
+            summary['fCnt'] = payload.get('fCnt')
+            summary['fPort'] = payload.get('fPort')
+            summary['devEUI'] = payload.get('devEUI')
+            
+            # 전송 정보 추출
+            if 'txInfo' in payload:
+                tx_info = payload['txInfo']
+                summary['frequency'] = tx_info.get('frequency')
+                summary['dataRate'] = tx_info.get('dr')
+                
+        except Exception as e:
+            self.logger.debug(f"페이로드 정보 추출 오류: {e}")
+            
+        return summary
     
     def log_uplink_data(self, data):
         log_filename = f"uplink_data_{datetime.now().strftime('%Y%m%d')}.json"
