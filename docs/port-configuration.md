@@ -12,8 +12,10 @@ LoRa Gateway Logger는 MQTT 브로커를 통해 LoRa 데이터를 수신하며, 
 |------|----------|------|------|
 | 1883 | MQTT | 기본 MQTT 포트 | 비암호화 |
 | 8883 | MQTTS | SSL/TLS 암호화 MQTT | 암호화 |
-| 8080 | WebSocket | MQTT over WebSocket | 비암호화 |
-| 8443 | WebSocket | MQTT over WebSocket (SSL) | 암호화 |
+| 9001 | WebSocket | MQTT over WebSocket | 비암호화 |
+| 9002 | WebSocket | MQTT over WebSocket (SSL) | 암호화 |
+
+⚠️ **주의**: 8080 포트는 Chirpstack에서 사용하므로 MQTT WebSocket은 9001 포트를 사용합니다.
 
 ### 환경 변수 설정
 
@@ -45,13 +47,15 @@ class MQTTConfig:
 
 ## 웹 애플리케이션 포트
 
+⚠️ **중요**: RAK7248에서 Chirpstack이 8080 포트를 사용하므로, 웹 애플리케이션은 다른 포트를 사용해야 합니다.
+
 ### Java Spring Boot 애플리케이션
 
 #### 개발 환경
 ```yaml
 # application-dev.yml
 server:
-  port: 8080
+  port: 8081  # Chirpstack 8080 포트 충돌 방지
   servlet:
     context-path: /api
 ```
@@ -60,13 +64,22 @@ server:
 ```yaml
 # application-prod.yml
 server:
-  port: 8443
+  port: 8443  # HTTPS 사용
   ssl:
     enabled: true
     key-store: classpath:keystore.p12
     key-store-password: your_password
     key-store-type: PKCS12
 ```
+
+### 포트 사용 현황 (RAK7248 환경)
+
+| 포트 | 서비스 | 설명 |
+|------|--------|------|
+| 8080 | **Chirpstack** | LoRaWAN 네트워크 서버 (예약됨) |
+| 8081 | Java Backend | Spring Boot API 서버 |
+| 3000 | React Dev | 프론트엔드 개발 서버 |
+| 80/443 | Nginx | 리버스 프록시 (운영환경) |
 
 ### JavaScript/React 개발 서버
 ```json
@@ -75,7 +88,7 @@ server:
     "dev": "react-scripts start",
     "build": "react-scripts build"
   },
-  "proxy": "http://localhost:8080"
+  "proxy": "http://localhost:8081"
 }
 ```
 
@@ -87,12 +100,25 @@ server:
 ```bash
 # Windows
 netstat -an | findstr :1883
-netstat -an | findstr :8080
+netstat -an | findstr :8080  # Chirpstack 확인
+netstat -an | findstr :8081  # 웹 백엔드 확인
 
 # Linux/Mac
 netstat -tuln | grep :1883
-netstat -tuln | grep :8080
+netstat -tuln | grep :8080   # Chirpstack 확인
+netstat -tuln | grep :8081   # 웹 백엔드 확인
 ```
+
+### RAK7248 특별 고려사항
+
+RAK7248에서는 다음 포트들이 기본적으로 사용됩니다:
+
+| 포트 | 서비스 | 변경 가능 여부 |
+|------|--------|---------------|
+| 8080 | Chirpstack Web UI | 변경 어려움 |
+| 1700 | Packet Forwarder (UDP) | 설정 가능 |
+| 22 | SSH | 설정 가능 |
+| 80 | Nginx (기본) | 설정 가능 |
 
 ### 사용 가능한 포트 찾기
 ```bash
@@ -114,7 +140,7 @@ services:
   lora-gateway-logger:
     build: .
     ports:
-      - "8080:8080"  # 웹 애플리케이션
+      - "8081:8080"  # 웹 애플리케이션 (Chirpstack 충돌 방지)
     environment:
       - MQTT_BROKER_HOST=mosquitto
       - MQTT_BROKER_PORT=1883
@@ -145,7 +171,9 @@ services:
 | 1883 | 1883 | MQTT Broker | LoRa 데이터 수신 |
 | 9001 | 9001 | MQTT WebSocket | 웹소켓 연결 |
 | 3000 | 3000 | React Dev | 프론트엔드 개발 서버 |
-| 8081 | 8080 | Spring Boot | Java 백엔드 API |
+| 8081 | 8080 | Spring Boot | Java 백엔드 API (Chirpstack 충돌 방지) |
+
+⚠️ **중요**: 8080은 Chirpstack이 사용하므로 웹 애플리케이션은 8081로 매핑됩니다.
 
 ## 방화벽 설정
 
@@ -154,8 +182,8 @@ services:
 # MQTT 포트 허용
 netsh advfirewall firewall add rule name="MQTT" dir=in action=allow protocol=TCP localport=1883
 
-# 웹 애플리케이션 포트 허용
-netsh advfirewall firewall add rule name="WebApp" dir=in action=allow protocol=TCP localport=8080
+# 웹 애플리케이션 포트 허용 (Chirpstack 충돌 방지)
+netsh advfirewall firewall add rule name="WebApp" dir=in action=allow protocol=TCP localport=8081
 ```
 
 ### Linux iptables
@@ -163,8 +191,8 @@ netsh advfirewall firewall add rule name="WebApp" dir=in action=allow protocol=T
 # MQTT 포트 허용
 sudo iptables -A INPUT -p tcp --dport 1883 -j ACCEPT
 
-# 웹 애플리케이션 포트 허용
-sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
+# 웹 애플리케이션 포트 허용 (Chirpstack 충돌 방지)
+sudo iptables -A INPUT -p tcp --dport 8081 -j ACCEPT
 
 # 설정 저장
 sudo iptables-save > /etc/iptables/rules.v4
@@ -175,8 +203,8 @@ sudo iptables-save > /etc/iptables/rules.v4
 # MQTT 포트 허용
 sudo ufw allow 1883/tcp
 
-# 웹 애플리케이션 포트 허용
-sudo ufw allow 8080/tcp
+# 웹 애플리케이션 포트 허용 (Chirpstack 충돌 방지)
+sudo ufw allow 8081/tcp
 
 # 방화벽 활성화
 sudo ufw enable
@@ -214,11 +242,14 @@ print('MQTT 연결 성공')
 
 ### 웹 애플리케이션 테스트
 ```bash
-# HTTP 연결 테스트
-curl -I http://localhost:8080/health
+# HTTP 연결 테스트 (Chirpstack 충돌 방지로 8081 사용)
+curl -I http://localhost:8081/health
 
 # HTTPS 연결 테스트
 curl -k -I https://localhost:8443/health
+
+# Chirpstack 연결 테스트
+curl -I http://localhost:8080
 ```
 
 ## 환경별 포트 구성
@@ -229,7 +260,7 @@ curl -k -I https://localhost:8443/health
 MQTT_BROKER_HOST=localhost
 MQTT_BROKER_PORT=1883
 WEB_SERVER_PORT=3000
-API_SERVER_PORT=8080
+API_SERVER_PORT=8081  # Chirpstack 충돌 방지
 ```
 
 ### 테스트 환경
@@ -238,7 +269,7 @@ API_SERVER_PORT=8080
 MQTT_BROKER_HOST=test-broker.local
 MQTT_BROKER_PORT=1883
 WEB_SERVER_PORT=3001
-API_SERVER_PORT=8081
+API_SERVER_PORT=8082  # 테스트 환경용 별도 포트
 ```
 
 ### 운영 환경
@@ -255,9 +286,9 @@ API_SERVER_PORT=8443
 ### Nginx 설정 예시
 ```nginx
 upstream api_servers {
-    server localhost:8080;
-    server localhost:8081;
-    server localhost:8082;
+    server localhost:8081;  # Primary API server
+    server localhost:8082;  # Backup API server
+    server localhost:8083;  # Additional API server
 }
 
 server {

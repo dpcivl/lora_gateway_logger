@@ -76,7 +76,7 @@ spring:
     time-zone: UTC
 
 server:
-  port: 8080
+  port: 8081  # Chirpstack이 8080을 사용하므로 8081 사용
   servlet:
     context-path: /api
 
@@ -362,7 +362,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(new MessageWebSocketHandler(), "/ws/messages")
-                .setAllowedOrigins("*");
+                .setAllowedOrigins("*");  // Chirpstack과 구분되는 WebSocket 엔드포인트
     }
 }
 
@@ -501,8 +501,8 @@ const RealtimeDashboard = () => {
     const [statistics, setStatistics] = useState({});
 
     useEffect(() => {
-        // WebSocket 연결
-        const websocket = new WebSocket('ws://localhost:8080/ws/messages');
+        // WebSocket 연결 (Chirpstack 충돌 방지로 8081 사용)
+        const websocket = new WebSocket('ws://localhost:8081/ws/messages');
         
         websocket.onmessage = (event) => {
             const message = JSON.parse(event.data);
@@ -632,7 +632,7 @@ export default RealtimeDashboard;
 // api/client.js
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8081/api';  // Chirpstack 충돌 방지
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
@@ -731,7 +731,11 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:3000", "https://yourdomain.com")
+                .allowedOrigins(
+                    "http://localhost:3000",           // React 개발 서버
+                    "http://localhost:8080",           // Chirpstack (필요시)
+                    "https://yourdomain.com"
+                )
                 .allowedMethods("GET", "POST", "PUT", "DELETE")
                 .allowedHeaders("*")
                 .allowCredentials(true);
@@ -830,7 +834,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8080:8080"
+      - "8081:8080"  # Chirpstack 충돌 방지로 8081 사용
     environment:
       - SPRING_DATASOURCE_URL=jdbc:sqlite:/app/data/lora_gateway.db
     volumes:
@@ -843,7 +847,7 @@ services:
     ports:
       - "3000:80"
     environment:
-      - REACT_APP_API_URL=http://localhost:8080/api
+      - REACT_APP_API_URL=http://localhost:8081/api  # 8081 포트 사용
     depends_on:
       - backend
 ```

@@ -248,7 +248,10 @@ sudo ufw allow ssh
 # MQTT 포트 허용 (필요시)
 sudo ufw allow 1883/tcp
 
-# 웹 애플리케이션 포트 허용 (필요시)
+# 웹 애플리케이션 포트 허용 (Chirpstack 충돌 방지로 8081 사용)
+sudo ufw allow 8081/tcp
+
+# Chirpstack 포트 (기본 설치됨)
 sudo ufw allow 8080/tcp
 ```
 
@@ -430,8 +433,25 @@ sudo systemctl start vncserver-x11-serviced
 ### 원격 모니터링
 ```bash
 # SSH 터널링을 통한 안전한 연결
+# Chirpstack 접근
 ssh -L 8080:localhost:8080 pi@raspberry-pi-ip
+
+# 웹 애플리케이션 접근 (8081 포트)
+ssh -L 8081:localhost:8081 pi@raspberry-pi-ip
 
 # 웹 기반 모니터링 도구 설치 (선택사항)
 sudo apt install -y netdata
 ```
+
+### RAK7248 특별 고려사항
+
+RAK7248에서는 다음 서비스들이 기본적으로 실행됩니다:
+
+| 포트 | 서비스 | 설명 |
+|------|--------|------|
+| 8080 | **Chirpstack** | LoRaWAN 네트워크 서버 웹 UI |
+| 1883 | MQTT Broker | Chirpstack 내장 MQTT |
+| 1700 | Packet Forwarder | LoRa 패킷 포워더 (UDP) |
+| 22 | SSH | 원격 접속 |
+
+따라서 웹 애플리케이션은 **8081 포트**를 사용해야 합니다.
