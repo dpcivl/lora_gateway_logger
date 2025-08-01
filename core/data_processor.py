@@ -5,7 +5,7 @@
 import json
 import logging
 import socket
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 
 # SQLite 연동 모듈 (optional)
@@ -47,13 +47,17 @@ class LoRaDataProcessor:
     def process_uplink_message(self, application_id: str, device_id: str, 
                               topic: str, payload_summary: Dict):
         """업링크 메시지 처리 및 저장"""
+        # KST 타임존 설정 (UTC+9)
+        kst = timezone(timedelta(hours=9))
+        now_kst = datetime.now(kst)
+        
         self.stats['messages_received'] += 1
-        self.stats['last_message_time'] = datetime.now()
+        self.stats['last_message_time'] = now_kst
         
         try:
             # 로그 데이터 구성
             log_data = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": now_kst.isoformat(),
                 "topic": topic,
                 "application_id": application_id,
                 "device_id": device_id,
@@ -76,8 +80,12 @@ class LoRaDataProcessor:
     def process_join_event(self, application_id: str, device_id: str, 
                           topic: str, join_summary: Dict):
         """JOIN 이벤트 처리 및 저장"""
+        # KST 타임존 설정 (UTC+9)
+        kst = timezone(timedelta(hours=9))
+        now_kst = datetime.now(kst)
+        
         self.stats['joins_received'] += 1
-        self.stats['last_message_time'] = datetime.now()
+        self.stats['last_message_time'] = now_kst
         
         try:
             # JOIN 이벤트 정보 로깅
@@ -157,8 +165,9 @@ class LoRaDataProcessor:
                 self.logger.error(f"JOIN 이벤트 SQLite 저장 오류: {e}")
         
         # 2. JSON 파일에 저장 (선택적)
+        kst = timezone(timedelta(hours=9))
         self._log_join_to_json({
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(kst).isoformat(),
             "event_type": "join",
             "topic": topic,
             "application_id": application_id,
@@ -169,7 +178,8 @@ class LoRaDataProcessor:
     
     def _log_uplink_to_json(self, data: Dict):
         """업링크 데이터를 JSON 파일에 저장"""
-        log_filename = f"uplink_data_{datetime.now().strftime('%Y%m%d')}.json"
+        kst = timezone(timedelta(hours=9))
+        log_filename = f"uplink_data_{datetime.now(kst).strftime('%Y%m%d')}.json"
         
         try:
             with open(log_filename, 'a', encoding='utf-8') as f:
@@ -181,7 +191,8 @@ class LoRaDataProcessor:
     
     def _log_join_to_json(self, data: Dict):
         """JOIN 이벤트를 JSON 파일에 저장"""
-        log_filename = f"join_events_{datetime.now().strftime('%Y%m%d')}.json"
+        kst = timezone(timedelta(hours=9))
+        log_filename = f"join_events_{datetime.now(kst).strftime('%Y%m%d')}.json"
         
         try:
             with open(log_filename, 'a', encoding='utf-8') as f:

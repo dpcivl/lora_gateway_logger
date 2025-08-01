@@ -3,7 +3,7 @@ LoRa Gateway Logger 데이터 모델
 업링크 메시지와 관련된 데이터 클래스 정의
 """
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 
@@ -71,8 +71,11 @@ class UplinkMessage:
         # 디코딩된 데이터 추출
         decoded_data = payload_summary.get('decoded_data', {})
         
+        # KST 타임존 설정 (UTC+9)
+        kst = timezone(timedelta(hours=9))
+        
         return cls(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(kst),
             application_id=application_id,
             device_id=device_id,
             dev_eui=payload_summary.get('devEUI'),
@@ -160,8 +163,11 @@ class JoinEvent:
                            raw_topic: str, hostname: str) -> 'JoinEvent':
         """페이로드 요약 정보에서 JoinEvent 생성"""
         
+        # KST 타임존 설정 (UTC+9)
+        kst = timezone(timedelta(hours=9))
+        
         return cls(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(kst),
             application_id=application_id,
             device_id=device_id,
             dev_eui=payload_summary.get('devEUI'),
