@@ -91,6 +91,3 @@ python -m pytest test_integration.py
 - [lora_web_dashboard](https://github.com/dpcivl/lora_web_dashboard) — 수집된 데이터를 시각화하는 웹 대시보드
 - [lora_tester](https://github.com/dpcivl/lora_tester) — LoRa 모듈 검증용 임베디드 테스트 도구
 
-## 라이선스
-
-[확인 필요: 예) MIT]
